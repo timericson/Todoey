@@ -7,42 +7,35 @@
 //
 
 import UIKit
+import CoreData
 
 class ToDoListViewController: UITableViewController {
     
     //var itemArray = ["Erik's Lunch", "Brush Teeth", "Stay Up!"]
     var itemArray = [Item]()
     
-    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent("Items.plist")
+    var selectedCategory : Category? {
+        
+        // didSet executes code when the variable selectedCatergory gets a value
+        didSet{
+            loadItems()
+        }
+        
+    }
+    
+//    // Data File Path
+//    let dataFilePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
+    
+    // Core data
+     let context = (UIApplication.shared.delegate as! AppDelegate).persistentContainer.viewContext
     
     //let defaults = UserDefaults.standard
     
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        
-        
-        print(dataFilePath)
-        
-//        let newItem = Item()
-//        newItem.title = "Erik's Lunch"
-//        itemArray.append(newItem)
-//        
-//        let newItem2 = Item()
-//        newItem2.title = "Brush Teeth"
-//        itemArray.append(newItem2)
-//        
-//        let newItem3 = Item()
-//        newItem3.title = "Stay Up!"
-//        itemArray.append(newItem3)
-        
-        loadItems()
-        
-        
-        //                if let items = defaults.array(forKey: "ToDoListArray") as? [Item] {
-        //                    itemArray = items
-        //                }
-        
+      print(FileManager.default.urls(for: .documentDirectory, in: .userDomainMask))
+
     }
     
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
@@ -73,35 +66,28 @@ class ToDoListViewController: UITableViewController {
         //            cell.accessoryType = .none
         //
         //        }
-        
+       
         return cell
         
     }
-    
-    
+  
     //MARK: - TableView Delegate Methods
     
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        //print(itemArray[indexPath.row])
         
-        // This reverses the value
+         //This reverses the current state
         itemArray[indexPath.row].done = !itemArray[indexPath.row].done
         
+ 
         saveItems()
         
-        //Reversing the value in a long winded way
+        //Reversing the current state in a long winded way
         //        if itemArray[indexPath.row].done == false {
-        //
         //            itemArray[indexPath.row].done = true
-        //
         //        } else {
-        //
         //            itemArray[indexPath.row].done = false
-        //
         //        }
-        
-      
-        
+ 
         // Deselects the cells once they've been pressed
         tableView.deselectRow(at: indexPath, animated: true)
         
@@ -121,8 +107,13 @@ class ToDoListViewController: UITableViewController {
             print("Success!")
             
             
-            let newItem = Item()
+            
+            
+            
+            let newItem = Item(context: self.context)
             newItem.title = textField.text!
+            newItem.done = false
+            newItem.parentCategory = self.selectedCategory
             
             self.itemArray.append(newItem)
             
@@ -153,33 +144,94 @@ class ToDoListViewController: UITableViewController {
     
     func saveItems() {
         
-        let encoder = PropertyListEncoder()
+        
         
         do {
-            let data = try encoder.encode(itemArray)
-            try data.write(to: dataFilePath!)
+           try context.save()
         } catch {
-            print("Error encoding item array, \(error)")
+            print("Error saving context \(error)")
         }
       
         self.tableView.reloadData()
     }
     
-    func loadItems() {
+    func loadItems(with request: NSFetchRequest<Item> = Item.fetchRequest(), predicate: NSPredicate? = nil) {
+
+        let categoryPredicate = NSPredicate(format: "parentCategory.name MATCHES %@", selectedCategory!.name!)
         
-        if let data = try? Data(contentsOf: dataFilePath!) {
+        if let additionalPredicate = predicate {
             
-            let decoder = PropertyListDecoder()
-            do {
-            itemArray = try decoder.decode([Item].self, from: data)
-            } catch {
-                print("Error decoding the array, \(error)")
-            }
+            request.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: [categoryPredicate, additionalPredicate])
+            
+        } else {
+            request.predicate = categoryPredicate
         }
         
+        do {
+         itemArray = try context.fetch(request)
+        } catch {
+            print("Error fetching data from context \(error)")
+        }
+        
+        tableView.reloadData()
     }
     
     
+    
+}
+
+
+//MARK: - Search Bar Methods
+extension ToDoListViewController: UISearchBarDelegate {
+    
+    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
+       
+        // Searchbar code to look for title non case or diacritic sensitive
+        let request : NSFetchRequest<Item> = Item.fetchRequest()
+        
+        
+        print(searchBar.text!)
+        
+        let predicate = NSPredicate(format: "title CONTAINS[CD] %@", searchBar.text!)
+        
+        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+        
+        loadItems(with: request, predicate: predicate)
+        
+//        do {
+//            itemArray = try context.fetch(request)
+//        } catch {
+//            print("Error fetching data from context \(error)")
+//        }
+        
+        //tableView.reloadData()
+        
+        
+        
+//        request.predicate = NSPredicate(format: "title CONTAINS[CD] %@", searchBar.text!)
+//
+//        request.sortDescriptors = [NSSortDescriptor(key: "title", ascending: true)]
+//
+//        loadItems(with: request)
+      
+    }
+    
+    // This method allows the user to dismiss the search list and go back to the original items
+    func searchBar(_ searchBar: UISearchBar, textDidChange searchText: String) {
+        
+        if searchBar.text?.count == 0 {
+            loadItems()
+            
+            // Dismisses the seachbar and popup keyboard
+            DispatchQueue.main.async {
+                searchBar.resignFirstResponder()
+            }
+            
+            
+            
+        }
+        
+    }
     
 }
 
